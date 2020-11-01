@@ -6,8 +6,11 @@
 //
 
 #include <iostream>
+#include <vector>
+#include <list>
 #include <thread>
 
+/*  first lesson
 //自己创建的线程也要从一个初始函数开始运行
 void myprint_join() {
     std::cout << "我的线程开始执行" << std::endl;
@@ -109,3 +112,125 @@ int main(int argc, const char * argv[]) {
     
     return 0;
 }
+*/  //first lesson
+
+
+/************************************************/
+
+/* second lesson
+ 
+void myprint(const int &i, char *buf) {
+    std::cout << "thread id = " << std::this_thread::get_id() << std::endl;
+    std::cout << "const int i = " << i << std::endl;     // 实际传引用是值传递，是安全的，但不建议用
+    std::cout << "char *buf = " << buf << std::endl;    // 指针在detach（）子线程时，会有问题
+}
+
+
+int main(int argc, const char * argv[]) {
+    // 一：传递临时变量作为线程参数
+    // 1.1 要避免的陷阱
+    // 避免主线程的临时变量在还没detach时就析构了，导致传入子线程的参数发生问题，主要是指针。
+    int mvar = 1;
+    int &mvarref = mvar;
+    char buf[] = "this is a test ";
+    std::thread myobj1(myprint, mvarref, buf);  // buf传递可能有问题，如果被提前析构。
+    myobj1.detach();
+    
+    // 1.2 总结
+    // a）传递int等简单类型，用值传递，避免用引用。
+    // b）传递累对象，避免隐式类型转换。在创建线程时就构建出临时对象，并且函数参数应该是引用形式（避免又一次的构造）
+    // 子线程函数 ： void myprint(int i, std::string &buf) {}
+    // 创建线程： std::thread th(myprint, i, std::string(buf));  (创建临时对象和给子线程函数参数赋值会调用两次类的构造函数，若子线程函数参数不是引用，则又会调用一次类的构造函数）
+    // 这是初步认识，其实可以用 std::ref() 传真正的引用参数
+    
+    
+    // 二：临时对象作为线程参数继续讲
+    // 2。1 线程id ： id是个数字，不同线程（主线程和子线程）的id不同
+    // 线程id 可用 std::this_thread::get_id() 获取
+    
+    // 三：传递类对象、智能指针作为线程参数
+    // std::ref(Obj) 可给线程传递真正的对象的引用，不用像上面例子中需要先创建临时对象以及多次的对象拷贝构造，但是在detach（）且在主线程先结束释放时不安全
+    // std::move() 传递智能指针
+    
+    // 四：用成员函数指针作为线程参数
+    std::cout << "main thread over" << std::endl;
+}
+ 
+ 
+ //*/  // second lesson
+
+
+//*     third lesson
+ 
+
+
+// 线程入口函数，可以多个线程使用
+void myprint(int num) {
+    std::cout << "myprint thread start, num =  " << num << std::endl;
+    std::cout << "myprint thread end, num = " << num << std::endl;
+}
+
+class A {
+public:
+    // 收到的命令如队列的线程
+    void inMsgRecvQueue() {
+        for (int i = 0; i < 1000; ++i) {
+            std::cout << "插入命令 " << i << std::endl;
+            msgRecvQueue.push_back(i);
+        }
+    }
+    
+    // 从消息队列中取数据的线程
+    void outMsgRecvQueue() {
+        for (int i = 0; i < 1000; ++i) {
+            if (!msgRecvQueue.empty()) {
+                std::cout << "取出数据 " << msgRecvQueue.front() << std::endl;
+                msgRecvQueue.pop_front();
+            } else {
+                std::cout << "消息队列 空 " << std::endl;
+            }
+        }
+    }
+private:
+    std::list<int> msgRecvQueue;
+};
+
+int main(int argc, const char * argv[]) {
+
+    std::vector<int> g_v = {1, 2, 3};
+    
+    // 一：创建和等待多个线程
+    // a) 多个线程执行顺序是乱的，和操作系统的调度机制有关
+    // b）如下写法，主线程等待所有子线程结束再结束
+    // c）用容器管理线程，对一次性创建大量线程并管理有利
+    /*std::vector<std::thread> mythreads;
+    for (int i = 0; i < 10; ++i) {
+        mythreads.emplace_back(std::thread(myprint, i));      // 创建10个线程，同时这10个线程已经开始执行
+    }
+    
+    for (auto iter = mythreads.begin(); iter != mythreads.end(); ++iter) {
+        iter->join();
+    }*/
+    
+    
+    // 二：数据共享问题
+    // 2.1 只读数据是安全的
+    // 2.2 有读有写，不经处理程序崩溃
+    
+    // 三：共享数据的保护案例代码
+    // 网络游戏服务器 创建两个线程，一个线程收集玩家命令，存入队列， 另一个线程从队列取出命令做处理
+    // 准备用成员函数作为线程函数的方法来写
+    // 引入保护共享数据问题的第一个概念“互斥量”
+    
+    A myobj;
+    std::thread inMsgThread(&A::inMsgRecvQueue, std::ref(myobj));   //使用std::ref()能真正传递引用
+    std::thread outMsgThread(&A::outMsgRecvQueue, std::ref(myobj));
+    inMsgThread.join();
+    outMsgThread.join();
+    
+    
+    
+    std::cout << "main thread end " << std::endl;
+}
+ 
+ //*/
