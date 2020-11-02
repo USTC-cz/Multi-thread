@@ -9,6 +9,7 @@
 #include <vector>
 #include <list>
 #include <thread>
+#include <mutex>
 
 /*  first lesson
 //自己创建的线程也要从一个初始函数开始运行
@@ -160,7 +161,7 @@ int main(int argc, const char * argv[]) {
  //*/  // second lesson
 
 
-//*     third lesson
+//*     third lesson & fourth lesson
  
 
 
@@ -176,23 +177,41 @@ public:
     void inMsgRecvQueue() {
         for (int i = 0; i < 1000; ++i) {
             std::cout << "插入命令 " << i << std::endl;
+            
+            {     // 加打括号，提前释放mutex，使得后面的操作不被锁
+            //std::lock_guard<std::mutex> guard(my_mutex1);                    // lock_guard原理：局部变量guard，构造时lock（），析构时unlock（）
+            my_mutex1.lock();                  // 先锁1，再锁2， 一定要顺序不同
+            my_mutex2.lock();
             msgRecvQueue.push_back(i);
+            my_mutex2.unlock();
+            my_mutex1.unlock();
+            }
+            
+            // 操作数据。。。。。。
         }
     }
     
     // 从消息队列中取数据的线程
     void outMsgRecvQueue() {
         for (int i = 0; i < 1000; ++i) {
+            my_mutex2.lock();                 // 先锁2， 再锁1，一定要顺序不同
+            my_mutex1.lock();
             if (!msgRecvQueue.empty()) {
                 std::cout << "取出数据 " << msgRecvQueue.front() << std::endl;
                 msgRecvQueue.pop_front();
+                my_mutex1.unlock();      // 分支一 解锁
+                my_mutex2.unlock();
             } else {
                 std::cout << "消息队列 空 " << std::endl;
+                my_mutex1.unlock();      // 分支二 解锁
+                my_mutex2.unlock();
             }
         }
     }
 private:
     std::list<int> msgRecvQueue;
+    std::mutex my_mutex1;
+    std::mutex my_mutex2;
 };
 
 int main(int argc, const char * argv[]) {
@@ -221,6 +240,39 @@ int main(int argc, const char * argv[]) {
     // 网络游戏服务器 创建两个线程，一个线程收集玩家命令，存入队列， 另一个线程从队列取出命令做处理
     // 准备用成员函数作为线程函数的方法来写
     // 引入保护共享数据问题的第一个概念“互斥量”
+    
+    // 第四课：互斥量
+    // 一：互斥量是个类对象，理解成一把锁，多个线程尝试用lock（）成员函数来加锁，只有一个线程能锁定成功（成功的标志是lock（）返回了）
+    // 如果没有锁成功，流程卡在lock（）这不断尝试加锁
+    
+    // 二：互斥量的用法
+    // 2.1 先lock（）共享数据，操作数据，再unlock（）
+    // lock（）和unlock（）成对出现,所有分支都要解锁
+    
+    // 2.2 为了防止unlock（），引入一个std：：lock_guard<>的类模版：自己unlock（）
+    // lock_guard<>直接取代lock（）和unlock（），不能再使用lock（）和unlock（）
+    
+    // 三：死锁
+    // 3.1 死锁的产生至少要有两个互斥量
+    // 情形：某一操作要lock 金锁 和 银锁 才能执行
+    // 线程A执行，先锁 金锁 ，然后lock 银锁。。。
+    // 上下文切换
+    // 线程B执行，先锁 银锁 ，然后lock 金锁。。。
+    // 此时发生死锁
+    
+    // 3.2 死锁的一般解决方案
+    // 保证两个互斥量上锁顺序一致，用lock（）或lock_guard都要保持顺序一致
+    
+    // 3.3 std::lock()函数模版：处理多个互斥量时使用（两个或以上，一个不能使用）
+    // 不存在多个线程中因为多个锁的上锁顺序导致的死锁
+    // 原理：如果锁住一个，另一个没锁住，则释放已锁住的锁，过段时间在尝试上锁
+    // 使用：上锁时，std::lock(mutex1, mutex2);
+    //      解锁时，unlock(mutex1); unlock(mutex2);         unlock()需要手动调用
+    
+    // 3.4 std::lock_guard<> 的 std::adopt_lock 参数：结合使用std::lock（）和 std::lock_guard<>, 而不用手动调用unlock（）
+    // 使用： std::lock(mutex1, mutex2);
+    //       std::lock_guard<std::mutex> guard1(mutex1, std::adopt_lock);      std::adopt_lock使得构造时不调用 lock（）
+    //       std::lock_guard<std::mutex> guard2(mutex2, std::adopt_lock);
     
     A myobj;
     std::thread inMsgThread(&A::inMsgRecvQueue, std::ref(myobj));   //使用std::ref()能真正传递引用
