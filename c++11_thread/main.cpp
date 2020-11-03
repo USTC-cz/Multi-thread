@@ -161,7 +161,7 @@ int main(int argc, const char * argv[]) {
  //*/  // second lesson
 
 
-//*     third lesson & fourth lesson
+/* ***    third lesson & fourth lesson
  
 
 
@@ -222,14 +222,14 @@ int main(int argc, const char * argv[]) {
     // a) 多个线程执行顺序是乱的，和操作系统的调度机制有关
     // b）如下写法，主线程等待所有子线程结束再结束
     // c）用容器管理线程，对一次性创建大量线程并管理有利
-    /*std::vector<std::thread> mythreads;
-    for (int i = 0; i < 10; ++i) {
-        mythreads.emplace_back(std::thread(myprint, i));      // 创建10个线程，同时这10个线程已经开始执行
-    }
+    //std::vector<std::thread> mythreads;
+    //for (int i = 0; i < 10; ++i) {
+        //mythreads.emplace_back(std::thread(myprint, i));      // 创建10个线程，同时这10个线程已经开始执行
+    //}
     
-    for (auto iter = mythreads.begin(); iter != mythreads.end(); ++iter) {
-        iter->join();
-    }*/
+    //for (auto iter = mythreads.begin(); iter != mythreads.end(); ++iter) {
+        //iter->join();
+    //}
     
     
     // 二：数据共享问题
@@ -284,5 +284,93 @@ int main(int argc, const char * argv[]) {
     
     std::cout << "main thread end " << std::endl;
 }
+ */
+
+
+//*       fifth lesson:   mutex.lock() （mutex的加锁） -> lock_guar<> (自动上下锁) -> std::lock()（多个mutex的避免死锁的加锁）  -> unique_lock()
+
+class A {
+public:
+    // 收到的命令如队列的线程
+    void inMsgRecvQueue() {
+        for (int i = 0; i < 1000; ++i) {
+            std::cout << "插入命令 " << i << std::endl;
+            
+            
+            std::unique_lock<std::mutex> guard(my_mutex, std::try_to_lock);
+            if (guard.owns_lock()) {
+                msgRecvQueue.push_back(i);
+            } else {
+                std::cout << "没拿到锁， 干点别的事" << std::endl;
+            }
+            
+            
+            // 操作数据。。。。。。
+        }
+    }
+    
+    // 从消息队列中取数据的线程
+    void outMsgRecvQueue() {
+        
+        std::unique_lock<std::mutex> guard(my_mutex);
+        std::chrono::milliseconds dura(20000);
+        std::this_thread::sleep_for(dura);
+      
+            if (!msgRecvQueue.empty()) {
+                std::cout << "取出数据 " << msgRecvQueue.front() << std::endl;
+                msgRecvQueue.pop_front();
+            } else {
+                std::cout << "消息队列 空 " << std::endl;
+            }
+        
+    }
+private:
+    std::list<int> msgRecvQueue;
+    std::mutex my_mutex;
+};
+
+int main(int argc, char *argv[]) {
+    
+    // 一： unique_lock()取代lock_guard
+    // unique_lock()是个类模版， 工作中，一般用lock_guard
+    // unique_lock比lock_guard更灵活，但效率要低，内存占用要高
+    
+    // 二：unique_lock 的第二个参数
+    
+    // 2.1 std::adopt_lock : 表示这个互斥量已经被lock了，构造时不需要再被lock，若互斥量在之前没有被lock却使用该参数，则出错报异常
+    // 所以使用前提是自己要提前lock（）
+    
+    // 2.2 std::try_to_lock : 尝试用mutex的lock（）去上锁，但如果没有锁定成功，则会立即返回，并不会阻塞在那里
+    // 使用std::try_to_lock的前提是自己不能先去lock（）
+    
+    // 2。3 std::defer_lock: 使用前提是自己不能先lock（），否则报异常
+    // std::defer_lock的含义并没有给mutex加锁：初始化一个没有上锁的mutex
+    // 多与unique_lock的成员函数一块使用，体现unique_lock的灵活性
+    
+    // 三：unique_lock的成员函数
+    // 3.1 lock（）：随时加锁，操作共享数据
+    // 3.2 unlock（）：随时解锁，操作非共享数据， 体现灵活性
+    // 3.3 try_lock() : 尝试给互斥量加锁，如果拿到锁，返回true，否则返回false。该函数不阻塞
+    // 3.4 release（）：返回它所管理的mutex对象，并释放所有权，unique_lock和mutex不再有关系
+    
+    // 锁住的代码多少称为锁的 粒度
+    
+    // 四： unique_lock 所有权的传递
+    // std::unique_lock<std::mutex> guard1(my_mutex);  guard 拥有 my_mutex的所有权
+    
+    // 所有权的转移方法
+    // 4.1 ：std::move()
+    // std::unique_lock<std::mutex> guard2(std::move(guard1));
+    
+    // 4.2 : 返回值
+    // return std::unique_lock<std::mutex> ;
+    
+    
+    A myobj;
+    std::thread outMsgThread(&A::inMsgRecvQueue, std::ref(myobj));   //使用std::ref()能真正传递引用
+    std::thread inMsgThread(&A::outMsgRecvQueue, std::ref(myobj));
+    inMsgThread.join();
+    outMsgThread.join();
+}
  
- //*/
+// */
